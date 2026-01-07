@@ -112,3 +112,37 @@ class FixerAgent:
             code = code.strip()[:-3].strip()
         
         return code
+    
+    def fix_code(self, refactoring_plan: Dict, iteration: int = 1) -> Dict:
+        """
+        Corrige tous les fichiers selon le plan de refactoring
+        """
+        print(f"\nFixer: Correction (itération {iteration})...")
+        
+        files_to_fix = refactoring_plan.get("files_analyzed", [])
+        error_feedback = refactoring_plan.get("errors", None)  # Erreurs du Judge
+        
+        results = []
+        
+        # Corriger chaque fichier
+        for file_info in files_to_fix:
+            # Si c'est une itération > 1, on a peut-être des erreurs spécifiques par fichier
+            file_errors = None
+            if error_feedback and isinstance(error_feedback, dict):
+                file_errors = error_feedback.get(file_info.get("file"), None)
+            elif error_feedback:
+                file_errors = error_feedback  # Erreurs globales
+            
+            result = self.fix_file(file_info, file_errors)
+            results.append(result)
+        
+        success_count = sum(1 for r in results if r.get("success", False))
+        
+        print(f"Fixer: {success_count}/{len(files_to_fix)} fichiers corrigés")
+        
+        return {
+            "iteration": iteration,
+            "total_files": len(files_to_fix),
+            "successful_fixes": success_count,
+            "results": results
+        }
