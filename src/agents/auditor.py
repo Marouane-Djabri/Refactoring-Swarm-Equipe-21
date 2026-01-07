@@ -83,3 +83,35 @@ class AuditorAgent:
             "code_content": code_content
         }
     
+    def analyze(self, python_files: List[Path]) -> Dict:
+        """
+        Analyse tous les fichiers et crée un plan de refactoring global
+        """
+        print(f"\nAuditor: Analyse de {len(python_files)} fichiers...")
+        
+        all_analyses = []
+        
+        # Analyser chaque fichier individuellement
+        for file_path in python_files:
+            analysis = self.analyze_file(file_path)
+            all_analyses.append(analysis)
+        
+        # TODO: Le Prompt Engineer doit créer un prompt pour synthétiser
+        # toutes les analyses individuelles en un plan global
+        
+        # Créer le plan de refactoring global
+        refactoring_plan = {
+            "total_files": len(python_files),
+            "files_analyzed": all_analyses,
+            "priority_files": [],  # Les fichiers les plus problématiques
+            "global_issues": "À compléter avec l'analyse LLM",
+            "recommended_order": [str(f) for f in python_files]  # Ordre de correction
+        }
+        
+        # Utiliser le LLM pour prioriser les fichiers selon leur gravité
+        synthesis_prompt = "Voici les analyses de tous les fichiers..."
+        synthesis_response = self.model.generate_content(synthesis_prompt)
+        
+        print(f"Auditor: Plan créé pour {len(python_files)} fichiers")
+        
+        return refactoring_plan
