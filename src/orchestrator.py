@@ -127,11 +127,9 @@ class LangGraphOrchestrator:
         print("\n" + "=" * 30)
         print("NOEUD: AUDITOR (Analyse)")
         print("=" * 30)
-        
-        python_files = state["python_files"]
-        
+                
         # Exécuter l'analyse
-        refactoring_plan = self.auditor.analyze(python_files)
+        refactoring_plan = self.auditor.analyze(Path(state["target_dir"]))
         
         # Mettre à jour l'état
         state["refactoring_plan"] = refactoring_plan
@@ -145,18 +143,19 @@ class LangGraphOrchestrator:
         Noeud Fixer: Corrige le code selon le plan
         """
         print("\n" + "=" * 30)
-        print(f"NOEUD: FIXER (Correction - Itération {state['current_iteration']})")
+        print(f"NOEUD: FIXER (Correction - Iteration {state['current_iteration']})")
         print("=" * 30)
         
         refactoring_plan = state["refactoring_plan"]
         iteration = state["current_iteration"]
         
         # Exécuter la correction
-        fix_results = self.fixer.fix_code(refactoring_plan, iteration=iteration)
+        fix_results = self.fixer.fix_code(refactoring_plan, test_errors=state["error_feedback"])
         
         # Mettre à jour l'état
         state["fix_results"] = fix_results
         state["fix_completed"] = True
+        state["current_iteration"] += 1
         
         return state
     
@@ -165,7 +164,7 @@ class LangGraphOrchestrator:
         Noeud Judge: Teste et valide le code corrigé
         """
         print("\n" + "=" * 30)
-        print("NOEUD: JUDGE (Test et Validation)")
+        print("NOEUD: JUDGE (Test and Validation)")
         print("=" * 30)
         
         target_dir = Path(state["target_dir"])
@@ -175,11 +174,11 @@ class LangGraphOrchestrator:
         
         # Mettre à jour l'état
         state["test_results"] = test_results
-        state["tests_passed"] = test_results.get("success", False)
+        state["tests_passed"] = test_results.get("status") == "success"
         
         # Si tests échouent, préparer le feedback pour le prochain cycle
         if not state["tests_passed"]:
-            state["error_feedback"] = test_results.get("pytest_output", "No error details")
+            state["error_feedback"] = "\n".join([t.get("error", "") for t in test_results.get("failing_tests", [])])
             # Injecter les erreurs dans le plan pour le Fixer
             state["refactoring_plan"]["errors"] = state["error_feedback"]
         
@@ -200,19 +199,19 @@ class LangGraphOrchestrator:
         
         if tests_passed:
             # Tous les tests passent -> Succès!
-            print(f"\nDÉCISION: STOP (Tests réussis)")
+            print(f"\DECISION: STOP (Tests successful)")
             state["should_continue"] = False
             return "stop"
         
         elif current_iteration >= max_iterations:
             # Max itérations atteint -> Échec
-            print(f"\nDÉCISION: STOP (Max itérations: {max_iterations})")
+            print(f"\nDECISION: STOP (Max iterations: {max_iterations})")
             state["should_continue"] = False
             return "stop"
         
         else:
             # Continuer le loop
-            print(f"\nDÉCISION: CONTINUE (Itération {current_iteration + 1}/{max_iterations})")
+            print(f"\nDECISION: CONTINUE (Iteration {current_iteration + 1}/{max_iterations})")
             state["current_iteration"] += 1
             state["should_continue"] = True
             return "continue"
@@ -231,7 +230,7 @@ class LangGraphOrchestrator:
             if not f.name.startswith("test_") and f.name != "__init__.py"
         ]
         
-        print(f"Fichiers Python découverts: {len(python_files)}")
+        print(f"Python files discovered: {len(python_files)}")
         for f in python_files:
             print(f"   • {f.relative_to(target_dir)}")
         
@@ -245,17 +244,17 @@ class LangGraphOrchestrator:
         
         # Validation du répertoire
         if not target_path.exists():
-            error_msg = f"Erreur: Le répertoire '{target_dir}' n'existe pas!"
+            error_msg = f"Erreur: The directory '{target_dir}' does not exist!"
             print(error_msg)
             return {"success": False, "error": error_msg}
         
-        print(f"Répertoire cible: {target_path.absolute()}\n")
+        print(f"Target directory: {target_path.absolute()}\n")
         
         # Découvrir les fichiers Python
         python_files = self.discover_python_files(target_path)
         
         if not python_files:
-            print("Aucun fichier Python trouvé!")
+            print("No Python files found!")
             return {"success": False, "error": "No Python files found"}
         
         # ===== INITIALISER L'ÉTAT =====
@@ -276,7 +275,7 @@ class LangGraphOrchestrator:
         }
         
         print("\n" + "=" * 60)
-        print("EXÉCUTION DU GRAPHE LANGGRAPH")
+        print("EXECUTION OF LANGGRAPH")
         print("=" * 60)
         
         # ===== EXÉCUTER LE GRAPHE =====
@@ -291,22 +290,18 @@ class LangGraphOrchestrator:
             
             if tests_passed:
                 print("\n" + "=" * 30)
-                print("SUCCÈS: Tous les tests passent!")
+                print("SUCCESS: All tests pass!")
                 print("=" * 30)
-                print(f"   • Itérations nécessaires: {iteration}")
-                print(f"   • Couverture: {test_results.get('coverage', {}).get('coverage_percent', 'N/A')}%")
-                print(f"   • Score Pylint: {test_results.get('pylint_result', {}).get('score', 'N/A')}/10")
+                print(f"   • Iterations needed: {iteration}")
                 
                 final_result = {
                     "success": True,
                     "iterations_needed": iteration,
-                    "final_coverage": test_results.get('coverage', {}).get('coverage_percent', 0),
-                    "final_pylint_score": test_results.get('pylint_result', {}).get('score', 0),
                     "test_result": test_results
                 }
             else:
                 print("\n" + "=" * 30)
-                print(f"ÉCHEC: Limite d'itérations atteinte ({self.max_iterations})")
+                print(f"FAILURE: Max iterations reached ({self.max_iterations})")
                 print("=" * 30)
 
                 final_result = {
@@ -336,7 +331,7 @@ class LangGraphOrchestrator:
             return final_result
             
         except Exception as e:
-            print(f"\nErreur lors de l'exécution du graphe: {e}")
+            print(f"\nError executing the graph: {e}")
             import traceback
             traceback.print_exc()
             
