@@ -6,11 +6,10 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
-# import google.generativeai as genai
-# from dotenv import load_dotenv
+import google.generativeai as genai
+from dotenv import load_dotenv
 
-from src.tools.test_tools import run_pytest, check_test_coverage
-from src.tools.analysis_tools import run_pylint
+from src.tools.test_tools import run_pytest
 from src.utils.logger import log_experiment, ActionType
 
 
@@ -19,87 +18,92 @@ class JudgeAgent:
     Agent responsable de la validation du code par tests
     """
     
-    def __init__(self, model_name: str = "gemini-2.5-flash"):
+    def __init__(self, model_name=None):
         """
         Initialise l'agent Judge
         """
         self.model_name = model_name
-        
-        # TODO: Configuration API
-        # load_dotenv()
-        # api_key = os.getenv("GOOGLE_API_KEY")
-        # 
-        # if not api_key:
-        #     raise ValueError(
-        #         "GOOGLE_API_KEY non trouvée dans .env! "
-        #         "Créez un fichier .env avec votre clé API."
-        #     )
-        # 
-        # genai.configure(api_key=api_key)
-        # self.model = genai.GenerativeModel(model_name)
-        
         print(f"Judge Agent initialisé")
-    
-    def check_pylint_quality(self, target_dir: Path) -> Dict:
+
+    def _load_prompt(self) -> str:
         """
-        Vérifie la qualité du code avec pylint
+        Charge le prompt Judge depuis le fichier .txt
         """
-        print(f"Vérification qualité pylint...")
-        
-        pylint_result = run_pylint(target_dir)
-        return pylint_result
-    
+        prompt_path = (
+            Path(__file__).resolve()
+            .parent.parent / "prompts" / "judge_prompt.txt"
+        )
+
+        if not prompt_path.exists():
+            raise FileNotFoundError(
+                f"judge_prompt.txt not found in: {prompt_path}"
+            )
+
+        return prompt_path.read_text(encoding="utf-8")
+
     def run_tests(self, target_dir: Path) -> Dict:
         """
         Exécute les tests unitaires avec pytest
         """
-        print(f"\nJudge: Exécution des tests...")
+        print(f"\nJudge: Running tests...")
         
         pytest_result = run_pytest(target_dir)
 
-        # Extraire les données
-        all_tests_passed = pytest_result["success"]
-        pytest_output = pytest_result["output"]
-        
-        # Vérifier la couverture de tests
-        coverage_result = check_test_coverage(target_dir)
+        success = pytest_result.get("success", False)
+        output = pytest_result.get("output", "")
 
-        # Vérifier aussi la qualité du code (pylint)
-        pylint_result = self.check_pylint_quality(target_dir)
+        if success:
+            result = {
+                "status": "success",
+                "message": "All tests passed. Mission complete."
+            }
+        else:
+            failing_tests = self._extract_failures(output)
+            result = {
+                "status": "failure",
+                "failing_tests": failing_tests
+            }
         
         # Logger l'exécution des tests
         log_experiment(
             agent_name="Judge_Agent",
-            model_used="pytest",  # Pas vraiment un LLM ici
-            action=ActionType.DEBUG if all_tests_passed else ActionType.ANALYSIS,
+            model_used="pytest",
+            action=ActionType.ANALYSIS if success else ActionType.DEBUG,
             details={
-                "target_directory": str(target_dir),
-                "input_prompt": f"Exécution pytest sur {target_dir}",  # OBLIGATOIRE
-                "output_response": pytest_output,
-                "all_tests_passed": all_tests_passed,
-                "test_coverage": coverage_result.get("coverage_percent", 0),
-                "pylint_score": pylint_result.get("score", 0),
-                "pylint_improved": pylint_result.get("improved", False)
+                "input_prompt": f"run_pytest on {target_dir}",
+                "output_response": output
             },
-            status="SUCCESS" if all_tests_passed else "FAILED"
+            status="SUCCESS" if success else "FAILED"
         )
         
-        # Construire le résultat
-        result = {
-            "success": all_tests_passed,
-            "pytest_output": pytest_output,
-            "coverage": coverage_result,
-            "pylint_result": pylint_result,
-            "quality_improved": pylint_result.get("improved", False)
-        }
-        
-        # Affichage des résultats
-        if all_tests_passed:
-            print(f"Tous les tests passent!")
-            print(f"Couverture: {coverage_result.get('coverage_percent', 'N/A')}%")
-            print(f"Score pylint: {pylint_result.get('score', 'N/A')}")
-        else:
-            print(f"Tests échoués - Logs envoyés au Fixer")
-            print(f"Couverture: {coverage_result.get('coverage_percent', 'N/A')}%")
-        
         return result
+    
+    @staticmethod
+    def _extract_failures(pytest_output: str) -> List[Dict]:
+        """
+        Extract minimal failure information from pytest output.
+        """
+        failures = []
+
+        lines = pytest_output.splitlines()
+        for line in lines:
+            if "FAILED" in line and "::" in line:
+                parts = line.split("::")
+                failures.append(
+                    {
+                        "file": parts[0],
+                        "test": parts[1] if len(parts) > 1 else "unknown",
+                        "error": line.strip()
+                    }
+                )
+
+        if not failures and pytest_output:
+            failures.append(
+                {
+                    "file": "unknown",
+                    "test": "unknown",
+                    "error": "Unable to clearly identify failing test."
+                }
+            )
+
+        return failures
