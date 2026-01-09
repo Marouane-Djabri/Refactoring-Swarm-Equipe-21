@@ -7,12 +7,11 @@ from pathlib import Path
 from typing import List, Dict
 import json
 
-# import google.generativeai as genai
-# from dotenv import load_dotenv
+import google.generativeai as genai
+from dotenv import load_dotenv
 
-from src.tools.file_operations import read_file
+from src.tools.file_operations import read_file, list_files
 from src.tools.analysis_tools import run_pylint
-from src.prompts.auditor_prompts import ANALYSIS_PROMPT
 from src.utils.logger import log_experiment, ActionType
 
 class AuditorAgent:
@@ -26,92 +25,88 @@ class AuditorAgent:
         """
         self.model_name = model_name
         
-        # TODO: configuration API:
-        # load_dotenv()
-        # api_key = os.getenv("GOOGLE_API_KEY")
-        # 
-        # if not api_key:
-        #     raise ValueError(
-        #         "GOOGLE_API_KEY non trouvée dans .env! "
-        #         "Créez un fichier .env avec votre clé API."
-        #     )
-        # 
-        # genai.configure(api_key=api_key)
-        # self.model = genai.GenerativeModel(model_name)
+        load_dotenv()
+        api_key = os.getenv("GOOGLE_API_KEY")
         
-        print(f"Auditor Agent initialisé avec le modèle: {model_name}")
+        if not api_key:
+            raise ValueError(
+                "GOOGLE_API_KEY not found in .env! "
+                "Create a .env file with your API key."
+            )
+        
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel(model_name)
+        
+        print(f"Auditor Agent initialised with the model: {model_name}")
 
-    def analyze_file(self, file_path: Path) -> Dict:
+    def _load_prompt(self) -> str:
         """
-        Analyse un fichier Python individuel
+        Charge le prompt Auditor depuis le fichier .txt
         """
-        print(f"Analyse de: {file_path.name}")
-        
-        code_content = read_file(file_path)
-        pylint_result = run_pylint(file_path)
-        
-        analysis_prompt = ANALYSIS_PROMPT.format(
-            code=code_content,
-            pylint_issues=json.dumps(pylint_result.get("issues", []), indent=2)
+        prompt_path = (
+            Path(__file__).resolve()
+            .parent.parent / "prompts" / "auditor_prompt.txt"
         )
-        
-        response = self.model.generate_content(analysis_prompt)
+
+        if not prompt_path.exists():
+            raise FileNotFoundError(
+                f"auditor_prompt.txt not found in: {prompt_path}"
+            )
+
+        return prompt_path.read_text(encoding="utf-8")
+    
+    def analyze(self, target_dir: Path) -> Dict:
+        """
+        Global audit of a target directory (sandbox)
+        """
+        print(f"\nAuditor: Analysis of {len(target_dir)} files...")
+
+        prompt_template = self._load_prompt()
+
+        files = list_files(target_dir)
+        python_files = [f for f in files if f.endswith(".py")]
+
+        analyses = []
+
+        for file_path in python_files:
+            content = read_file(file_path)
+            pylint_report = run_pylint(file_path)
+
+            analyses.append(
+                {
+                    "file": file_path,
+                    "code_preview": content[:1000] + "..." if len(content) > 1000 else content,
+                    "code_length": len(content),
+                    "pylint": pylint_report,
+                }
+            )
+
+        full_prompt = (
+            f"{prompt_template}\n\n"
+            f"PROJECT FILES ANALYSIS:\n"
+            f"{json.dumps(analyses, indent=2)}"
+        )
+
+        response = self.model.generate_content(full_prompt)
         llm_response = response.text
-        
-        # Logger l'interaction avec le LLM
+
+        try:
+            result = json.loads(llm_response)
+        except json.JSONDecodeError as exc:
+            raise ValueError("LLM response is not valid JSON") from exc
+
         log_experiment(
             agent_name="Auditor_Agent",
             model_used=self.model_name,
             action=ActionType.ANALYSIS,
             details={
-                "file_analyzed": str(file_path),
-                "input_prompt": analysis_prompt,
-                "output_response": llm_response,
-                "code_length": len(code_content),
-                "pylint_score": pylint_result.get("score", 0),
-                "issues_count": len(pylint_result.get("issues", []))
+                "target_directory": str(target_dir),
+                "files_analyzed": len(python_files),
+                "input_prompt": full_prompt[:1500] + "..." if len(full_prompt) > 1500 else full_prompt,
+                "output_response": llm_response[:1000] + "..." if len(llm_response) > 1000 else llm_response,
+                "analysis_result_keys": list(result.keys()) if isinstance(result, dict) else []
             },
-            status="SUCCESS"
+            status="SUCCESS",
         )
-        
-        # Retourner les résultats structurés
-        return {
-            "file": str(file_path),
-            "issues": llm_response,
-            "pylint_score": pylint_result.get("score", 0),
-            "pylint_issues": pylint_result.get("issues", []),
-            "code_content": code_content
-        }
-    
-    def analyze(self, python_files: List[Path]) -> Dict:
-        """
-        Analyse tous les fichiers et crée un plan de refactoring global
-        """
-        print(f"\nAuditor: Analyse de {len(python_files)} fichiers...")
-        
-        all_analyses = []
-        
-        # Analyser chaque fichier individuellement
-        for file_path in python_files:
-            analysis = self.analyze_file(file_path)
-            all_analyses.append(analysis)
-        
-        # TODO: Le Prompt Engineer doit créer un prompt pour synthétiser
-        # toutes les analyses individuelles en un plan global
-        
-        # Créer le plan de refactoring global
-        refactoring_plan = {
-            "total_files": len(python_files),
-            "files_analyzed": all_analyses,
-            "priority_files": [],  # Les fichiers les plus problématiques
-            "global_issues": "À compléter avec l'analyse LLM",
-            "recommended_order": [str(f) for f in python_files]  # Ordre de correction
-        }
-        
-        # Utiliser le LLM pour prioriser les fichiers selon leur gravité
-        synthesis_prompt = "Voici les analyses de tous les fichiers..."
-        synthesis_response = self.model.generate_content(synthesis_prompt)
-        
-        print(f"Auditor: Plan créé pour {len(python_files)} fichiers")
-        
-        return refactoring_plan
+
+        return result
