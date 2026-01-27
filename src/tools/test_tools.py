@@ -16,6 +16,43 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 
+# ==================== PYTEST WRAPPER FOR JUDGE AGENT ====================
+
+def run_pytest(target_dir=None):
+    """
+    Run pytest on a directory or file.
+
+    This function is used by the Judge agent to execute tests.
+
+    Args:
+        target_dir: Directory or file to test (relative to sandbox)
+                   If None, tests entire sandbox
+
+    Returns:
+        Dictionary containing:
+            - success: Whether all tests passed
+            - passed: Number of passed tests
+            - failed: Number of failed tests
+            - errors: Number of test errors
+            - output: Full pytest output
+            - summary: Human-readable summary
+    """
+    tools = RefactoringTools(base_sandbox="./sandbox")
+    result = tools.run_pytest(target_dir, verbose=True)
+
+    # Return in a format the Judge agent expects
+    return {
+        "success": result.get("success", False),
+        "passed": result.get("passed", 0),
+        "failed": result.get("failed", 0),
+        "errors": result.get("errors", 0),
+        "total": result.get("total", 0),
+        "output": result.get("full_output", ""),
+        "summary": result.get("summary", ""),
+        "test_path": result.get("test_path", "")
+    }
+
+
 def print_section(title: str):
     """Print a formatted section header."""
     print(f"\n{'=' * 60}")
