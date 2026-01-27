@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
-import google.generativeai as genai
 from dotenv import load_dotenv
 
 from src.tools.test_tools import run_pytest
