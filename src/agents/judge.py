@@ -51,6 +51,15 @@ class JudgeAgent:
         success = pytest_result.get("success", False)
         output = pytest_result.get("output", "")
 
+        print("\n" + "="*40)
+        print("          PYTEST OUTPUT START \n")
+        print("="*40)
+        print(pytest_result)
+        print("\n")
+        print("="*40)
+        print("           PYTEST OUTPUT END")
+        print("="*40 + "\n")
+
         if success:
             result = {
                 "status": "success",

@@ -46,7 +46,7 @@ def read_file(file_path: str) -> str:
     return result["content"]
 
 
-def write_file(file_path: str, content: str, create_backup: bool = True) -> None:
+def write_file(file_path: str, content: str, create_backup: bool = False) -> None:
     """
     Write content to a file.
 

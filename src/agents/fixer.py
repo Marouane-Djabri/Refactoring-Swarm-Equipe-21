@@ -87,7 +87,7 @@ class FixerAgent:
             validate_path(file_path)
 
             original_code = read_file(file_path)
-            backup_file(file_path)
+            # backup_file(file_path)
 
             prompt = (
                 f"{prompt_template}\n\n"
@@ -106,7 +106,7 @@ class FixerAgent:
             if fixed_code.strip() == original_code.strip():
                 continue  # Nothing changed
 
-            write_file(file_path, fixed_code)
+            write_file(file_path, fixed_code, create_backup=False)
 
             results.append(
                 {

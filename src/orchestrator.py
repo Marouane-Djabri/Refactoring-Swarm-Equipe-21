@@ -12,6 +12,7 @@ from langgraph.graph import StateGraph, END
 from src.agents.auditor import AuditorAgent
 from src.agents.fixer import FixerAgent
 from src.agents.judge import JudgeAgent
+from src.agents.test_case_generator import TestCaseGeneratorAgent
 from src.agents.test_generator import TestGeneratorAgent
 from src.tools.refactoring_tools import RefactoringTools
 from src.utils.logger import log_experiment, ActionType
@@ -82,13 +83,14 @@ class LangGraphOrchestrator:
         self.auditor = AuditorAgent(model_name=model_name)
         self.fixer = FixerAgent(model_name=model_name)
         self.judge = JudgeAgent(model_name=model_name)
+        self.test_case_generator = TestCaseGeneratorAgent(model_name=model_name)
         self.test_generator = TestGeneratorAgent(model_name=model_name)
 
         # Créer le graphe d'exécution
         self.workflow = self._build_workflow_graph()
 
         print("\nGraphe LangGraph créé!")
-        print("Noeuds: Test-generator -> Auditor -> Fixer -> Judge -> (Loop)")
+        print("Noeuds: TestCaseGenerator -> Auditor -> Fixer -> TestGenerator -> Judge -> (Loop)")
         print()
 
     def _build_workflow_graph(self) -> StateGraph:
@@ -101,7 +103,7 @@ class LangGraphOrchestrator:
         # ===== DÉFINIR LES NOEUDS =====
 
         # Noeud 0: Generator (Creation des tests)
-        workflow.add_node("test_generator", self._test_generator_node)
+        workflow.add_node("test_case_generator", self._test_case_generator_node)
 
         # Noeud 1: Auditor (analyse)
         workflow.add_node("auditor", self._auditor_node)
@@ -109,22 +111,28 @@ class LangGraphOrchestrator:
         # Noeud 2: Fixer (correction)
         workflow.add_node("fixer", self._fixer_node)
 
+        # Noeud 2.5: TestGenerator (generation de tests unitaires)
+        workflow.add_node("test_generator", self._test_generator_node)
+
         # Noeud 3: Judge (test et validation)
         workflow.add_node("judge", self._judge_node)
 
         # ===== DÉFINIR LES TRANSITIONS =====
 
-        # START -> TestGenerator (toujours commencer par la generation)
-        workflow.set_entry_point("test_generator")
+        # START -> TestCaseGenerator (toujours commencer par la generation)
+        workflow.set_entry_point("test_case_generator")
         
-        # TestGenerator -> Auditor
-        workflow.add_edge("test_generator", "auditor")
+        # TestCaseGenerator -> Auditor
+        workflow.add_edge("test_case_generator", "auditor")
 
         # Auditor -> Fixer (après analyse, toujours corriger)
         workflow.add_edge("auditor", "fixer")
 
-        # Fixer -> Judge (après correction, toujours tester)
-        workflow.add_edge("fixer", "judge")
+        # Fixer -> TestGenerator (nouveau flux)
+        workflow.add_edge("fixer", "test_generator")
+        
+        # TestGenerator -> Judge
+        workflow.add_edge("test_generator", "judge")
 
         # Judge -> ? (transition conditionnelle)
         workflow.add_conditional_edges(
@@ -143,16 +151,16 @@ class LangGraphOrchestrator:
 
     # ===== FONCTIONS DES NOEUDS =====
 
-    def _test_generator_node(self, state: RefactoringState) -> RefactoringState:
+    def _test_case_generator_node(self, state: RefactoringState) -> RefactoringState:
         """
-        Noeud TestGenerator: Génère les fichiers de test
+        Noeud TestCaseGenerator: Génère les fichiers de test
         """
         print("\n" + "=" * 30)
-        print("NOEUD: TEST GENERATOR (Generation)")
+        print("NOEUD: TEST CASE GENERATOR (Generation)")
         print("=" * 30)
         
         target_dir = state["target_dir"]
-        self.test_generator.generate_tests(target_dir)
+        self.test_case_generator.generate_tests(target_dir)
         
         # Mettre à jour la découverte des fichiers car de nouveaux fichiers ont été créés
         python_files = self.discover_python_files(Path(target_dir))
@@ -201,6 +209,19 @@ class LangGraphOrchestrator:
 
         return state
 
+    def _test_generator_node(self, state: RefactoringState) -> RefactoringState:
+        """
+        Noeud TestGenerator: Génère des tests unitaires pour le code corrigé
+        """
+        print("\n" + "=" * 30)
+        print("NOEUD: TEST GENERATOR (Test Creation)")
+        print("=" * 30)
+        
+        target_dir = state["target_dir"]
+        self.test_generator.generate_unit_tests(target_dir)
+        
+        return state
+        
     def _judge_node(self, state: RefactoringState) -> RefactoringState:
         """
         Noeud Judge: Teste et valide le code corrigé
@@ -310,9 +331,9 @@ class LangGraphOrchestrator:
         # Découvrir les fichiers Python
         python_files = self.discover_python_files(target_path)
 
-        # Si aucun fichier n'est trouvé, on continue quand même car le TestGenerator va en créer
+        # Si aucun fichier n'est trouvé, on continue quand même car le TestCaseGenerator va en créer
         if not python_files:
-            print("No Python files found initially. TestGenerator will generate them.")
+            print("No Python files found initially. TestCaseGenerator will generate them.")
 
         # ===== INITIALISER L'ÉTAT =====
         initial_state: RefactoringState = {
