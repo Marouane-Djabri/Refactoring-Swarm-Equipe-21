@@ -100,7 +100,9 @@ class TestGeneratorAgent:
                         "generated_test_file": test_filename,
                         "status": "SUCCESS",
                         "input_prompt": prompt,
-                        "output_response": generated_code
+                        "output_response": generated_code,
+                        "raw_llm_response": response.choices[0].message.content,
+                        "generated_code_length": len(generated_code)
                     },
                     status="SUCCESS"
                 )

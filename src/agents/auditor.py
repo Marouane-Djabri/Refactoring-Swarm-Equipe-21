@@ -128,9 +128,11 @@ class AuditorAgent:
             details={
                 "target_directory": str(target_dir),
                 "files_analyzed": [str(p) for p in python_files],
-                "input_prompt": full_prompt[:1500] + "..." if len(full_prompt) > 1500 else full_prompt,
-                "output_response": llm_response[:1000] + "..." if len(llm_response) > 1000 else llm_response,
-                "issues_found": len(result.get("issues", [])) if isinstance(result, dict) else 0
+                "input_prompt": full_prompt,
+                "output_response": llm_response,
+                "cleaned_response": clean_response,
+                "issues_found": len(result.get("issues", [])) if isinstance(result, dict) else 0,
+                "full_analysis_result": result
             },
             status="SUCCESS",
         )

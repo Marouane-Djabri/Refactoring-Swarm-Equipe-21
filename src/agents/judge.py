@@ -70,8 +70,16 @@ class JudgeAgent:
             model_used="pytest",
             action=ActionType.ANALYSIS if success else ActionType.DEBUG,
             details={
+                "target_directory": str(target_dir),
                 "input_prompt": f"run_pytest on {target_dir}",
-                "output_response": output
+                "output_response": output,
+                "success": success,
+                "passed_tests_count": pytest_result.get("passed", 0),
+                "failed_tests_count": pytest_result.get("failed", 0),
+                "error_tests_count": pytest_result.get("errors", 0),
+                "total_tests": pytest_result.get("total", 0),
+                "failing_tests_details": failing_tests if not success else [],
+                "full_pytest_result": pytest_result
             },
             status="SUCCESS" if success else "FAILED"
         )

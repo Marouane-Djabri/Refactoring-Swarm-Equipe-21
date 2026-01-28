@@ -120,9 +120,14 @@ class FixerAgent:
                 model_used=self.model_name,
                 action=ActionType.DEBUG if test_errors else ActionType.FIX,
                 details={
+                    "file_fixed": str(file_path),
                     "input_prompt": prompt,
                     "output_response": response.choices[0].message.content,
-                    "file_fixed": str(file_path),
+                    "issue_description": issue.get("description", "N/A"),
+                    "suggested_fix": issue.get("suggested_fix", "N/A"),
+                    "test_errors_context": test_errors if test_errors else "None",
+                    "original_code_snippet": original_code, 
+                    "fixed_code_snippet": fixed_code
                 },
                 status="SUCCESS",
             )
