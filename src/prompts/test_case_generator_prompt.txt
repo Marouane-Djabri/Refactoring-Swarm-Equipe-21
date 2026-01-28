@@ -1,8 +1,0 @@
---- syntax_error.py ---
-Create a very simple Python script that has a deliberate syntax error (e.g. missing colon at end of function def). Output ONLY the python code.
-
---- logic_bug.py ---
-Create a very simple Python script that has a runtime logical bug (e.g. division by zero potential). Output ONLY the python code.
-
---- bad_code.py ---
-Create a simple Python script calculating something, but with very bad style: variables like 'a','b', no comments, messy indentation, no docstrings. It should run correctly but look ugly. Output ONLY the python code.

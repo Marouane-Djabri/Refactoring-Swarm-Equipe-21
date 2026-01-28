@@ -12,7 +12,6 @@ from langgraph.graph import StateGraph, END
 from src.agents.auditor import AuditorAgent
 from src.agents.fixer import FixerAgent
 from src.agents.judge import JudgeAgent
-from src.agents.test_case_generator import TestCaseGeneratorAgent
 from src.agents.test_generator import TestGeneratorAgent
 from src.tools.refactoring_tools import RefactoringTools
 from src.utils.logger import log_experiment, ActionType
@@ -83,14 +82,13 @@ class LangGraphOrchestrator:
         self.auditor = AuditorAgent(model_name=model_name)
         self.fixer = FixerAgent(model_name=model_name)
         self.judge = JudgeAgent(model_name=model_name)
-        self.test_case_generator = TestCaseGeneratorAgent(model_name=model_name)
         self.test_generator = TestGeneratorAgent(model_name=model_name)
 
         # Créer le graphe d'exécution
         self.workflow = self._build_workflow_graph()
 
         print("\nGraphe LangGraph créé!")
-        print("Noeuds: TestCaseGenerator -> Auditor -> Fixer -> TestGenerator -> Judge -> (Loop)")
+        print("Noeuds: Auditor -> Fixer -> TestGenerator -> Judge -> (Loop)")
         print()
 
     def _build_workflow_graph(self) -> StateGraph:
@@ -101,9 +99,6 @@ class LangGraphOrchestrator:
         workflow = StateGraph(RefactoringState)
 
         # ===== DÉFINIR LES NOEUDS =====
-
-        # Noeud 0: Generator (Creation des tests)
-        workflow.add_node("test_case_generator", self._test_case_generator_node)
 
         # Noeud 1: Auditor (analyse)
         workflow.add_node("auditor", self._auditor_node)
@@ -119,11 +114,8 @@ class LangGraphOrchestrator:
 
         # ===== DÉFINIR LES TRANSITIONS =====
 
-        # START -> TestCaseGenerator (toujours commencer par la generation)
-        workflow.set_entry_point("test_case_generator")
-        
-        # TestCaseGenerator -> Auditor
-        workflow.add_edge("test_case_generator", "auditor")
+        # START -> Auditor (toujours commencer par l'analyse)
+        workflow.set_entry_point("auditor")
 
         # Auditor -> Fixer (après analyse, toujours corriger)
         workflow.add_edge("auditor", "fixer")
@@ -150,23 +142,6 @@ class LangGraphOrchestrator:
         return app
 
     # ===== FONCTIONS DES NOEUDS =====
-
-    def _test_case_generator_node(self, state: RefactoringState) -> RefactoringState:
-        """
-        Noeud TestCaseGenerator: Génère les fichiers de test
-        """
-        print("\n" + "=" * 30)
-        print("NOEUD: TEST CASE GENERATOR (Generation)")
-        print("=" * 30)
-        
-        target_dir = state["target_dir"]
-        self.test_case_generator.generate_tests(target_dir)
-        
-        # Mettre à jour la découverte des fichiers car de nouveaux fichiers ont été créés
-        python_files = self.discover_python_files(Path(target_dir))
-        state["python_files"] = python_files
-        
-        return state
 
     def _auditor_node(self, state: RefactoringState) -> RefactoringState:
         """

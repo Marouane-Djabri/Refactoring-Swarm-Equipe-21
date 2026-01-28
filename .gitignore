@@ -5,7 +5,6 @@ __pycache__/
 __pycache__/
 *.pyc
 venv/
-.env
 .DS_Store
 
 # Dossier de travail temporaire (ne pas récupérer les modifications des étudiants ici)
