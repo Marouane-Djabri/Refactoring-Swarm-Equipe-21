@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
-import google.generativeai as genai
 from dotenv import load_dotenv
 
 from src.tools.test_tools import run_pytest
@@ -51,6 +50,7 @@ class JudgeAgent:
 
         success = pytest_result.get("success", False)
         output = pytest_result.get("output", "")
+
 
         if success:
             result = {

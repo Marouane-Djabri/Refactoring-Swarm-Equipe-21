@@ -37,8 +37,14 @@ def run_pytest(target_dir=None):
             - output: Full pytest output
             - summary: Human-readable summary
     """
-    tools = RefactoringTools(base_sandbox="./sandbox")
-    result = tools.run_pytest(target_dir, verbose=True)
+    # Use the provided target_dir (from CLI) as the sandbox base
+    sandbox_path = target_dir if target_dir else "../../sandbox"
+    
+    # Initialize tools with the dynamic target directory
+    tools = RefactoringTools(base_sandbox=sandbox_path)
+    
+    # Run pytest on the root of this sandbox (None targets the base_sandbox)
+    result = tools.run_pytest(None, verbose=True)
 
     # Return in a format the Judge agent expects
     return {

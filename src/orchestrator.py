@@ -1,6 +1,6 @@
 """
 Orchestrator - Gère le flux d'exécution des agents
-Auditor -> Fixer -> Judge en boucle
+Test-generator -> Auditor -> Fixer -> Judge en boucle
 """
 
 from pathlib import Path
@@ -12,6 +12,7 @@ from langgraph.graph import StateGraph, END
 from src.agents.auditor import AuditorAgent
 from src.agents.fixer import FixerAgent
 from src.agents.judge import JudgeAgent
+from src.agents.test_generator import TestGeneratorAgent
 from src.tools.refactoring_tools import RefactoringTools
 from src.utils.logger import log_experiment, ActionType
 
@@ -55,7 +56,7 @@ class LangGraphOrchestrator:
     Orchestrateur basé sur LangGraph pour gérer le workflow multi-agents
     """
 
-    def __init__(self, max_iterations: int = 10, model_name: str = "gemini-2.5-flash", target_dir: str = "./sandbox"):
+    def __init__(self, max_iterations: int = 10, model_name: str = "mistral-large-latest", target_dir: str = "./sandbox"):
         """
         Initialise l'orchestrateur LangGraph
         """
@@ -81,12 +82,13 @@ class LangGraphOrchestrator:
         self.auditor = AuditorAgent(model_name=model_name)
         self.fixer = FixerAgent(model_name=model_name)
         self.judge = JudgeAgent(model_name=model_name)
+        self.test_generator = TestGeneratorAgent(model_name=model_name)
 
         # Créer le graphe d'exécution
         self.workflow = self._build_workflow_graph()
 
         print("\nGraphe LangGraph créé!")
-        print("Noeuds: Auditor -> Fixer -> Judge -> (Loop)")
+        print("Noeuds: Auditor -> Fixer -> TestGenerator -> Judge -> (Loop)")
         print()
 
     def _build_workflow_graph(self) -> StateGraph:
@@ -104,6 +106,9 @@ class LangGraphOrchestrator:
         # Noeud 2: Fixer (correction)
         workflow.add_node("fixer", self._fixer_node)
 
+        # Noeud 2.5: TestGenerator (generation de tests unitaires)
+        workflow.add_node("test_generator", self._test_generator_node)
+
         # Noeud 3: Judge (test et validation)
         workflow.add_node("judge", self._judge_node)
 
@@ -115,8 +120,11 @@ class LangGraphOrchestrator:
         # Auditor -> Fixer (après analyse, toujours corriger)
         workflow.add_edge("auditor", "fixer")
 
-        # Fixer -> Judge (après correction, toujours tester)
-        workflow.add_edge("fixer", "judge")
+        # Fixer -> TestGenerator (nouveau flux)
+        workflow.add_edge("fixer", "test_generator")
+        
+        # TestGenerator -> Judge
+        workflow.add_edge("test_generator", "judge")
 
         # Judge -> ? (transition conditionnelle)
         workflow.add_conditional_edges(
@@ -176,6 +184,19 @@ class LangGraphOrchestrator:
 
         return state
 
+    def _test_generator_node(self, state: RefactoringState) -> RefactoringState:
+        """
+        Noeud TestGenerator: Génère des tests unitaires pour le code corrigé
+        """
+        print("\n" + "=" * 30)
+        print("NOEUD: TEST GENERATOR (Test Creation)")
+        print("=" * 30)
+        
+        target_dir = state["target_dir"]
+        self.test_generator.generate_unit_tests(target_dir)
+        
+        return state
+        
     def _judge_node(self, state: RefactoringState) -> RefactoringState:
         """
         Noeud Judge: Teste et valide le code corrigé
@@ -285,9 +306,9 @@ class LangGraphOrchestrator:
         # Découvrir les fichiers Python
         python_files = self.discover_python_files(target_path)
 
+        # Si aucun fichier n'est trouvé, on continue quand même car le TestCaseGenerator va en créer
         if not python_files:
-            print("No Python files found!")
-            return {"success": False, "error": "No Python files found"}
+            print("No Python files found initially. TestCaseGenerator will generate them.")
 
         # ===== INITIALISER L'ÉTAT =====
         initial_state: RefactoringState = {

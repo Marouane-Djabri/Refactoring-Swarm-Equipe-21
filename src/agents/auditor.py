@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Dict
 import json
 
-import google.generativeai as genai
+from mistralai import Mistral
 from dotenv import load_dotenv
 
 from src.tools.file_operations import read_file, list_files
@@ -19,23 +19,22 @@ class AuditorAgent:
     Agent responsable de l'audit du code source
     """
     
-    def __init__(self, model_name: str = "gemini-2.5-flash"):
+    def __init__(self, model_name: str = "mistral-large-latest"):
         """
         Initialise l'agent Auditor
         """
         self.model_name = model_name
         
         load_dotenv()
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("MISTRAL_API_KEY")
         
         if not api_key:
             raise ValueError(
-                "GOOGLE_API_KEY not found in .env! "
+                "MISTRAL_API_KEY not found in .env! "
                 "Create a .env file with your API key."
             )
         
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
+        self.client = Mistral(api_key=api_key)
         
         print(f"Auditor Agent initialised with the model: {model_name}")
 
@@ -59,7 +58,7 @@ class AuditorAgent:
         """
         Global audit of a target directory (sandbox)
         """
-        print(f"\nAuditor: Analysis of {len(target_dir)} files...")
+        print(f"\nAuditor: Analysis of {len(str(target_dir) )} files...")
 
         prompt_template = self._load_prompt()
 
@@ -87,13 +86,40 @@ class AuditorAgent:
             f"{json.dumps(analyses, indent=2)}"
         )
 
-        response = self.model.generate_content(full_prompt)
-        llm_response = response.text
+        response = self.client.chat.complete(
+            model=self.model_name,
+            messages=[{"role": "user", "content": full_prompt}],
+            response_format={"type": "json_object"}
+        )
+        llm_response = response.choices[0].message.content
+
+        # Nettoyage robuste de la réponse JSON (même avec le mode JSON, parfois utile)
+        clean_response = llm_response.strip()
+        
+        # 1. Essayer d'extraire le bloc markdown
+        if "```json" in clean_response:
+            parts = clean_response.split("```json")
+            if len(parts) > 1:
+                clean_response = parts[1].split("```")[0].strip()
+        elif "```" in clean_response:
+             parts = clean_response.split("```")
+             if len(parts) > 1:
+                # Souvent le premier bloc est celui qui nous intéresse
+                clean_response = parts[1].strip()
+
+        # 2. Si ce n'est toujours pas propre, chercher les accolades extrêmes
+        if not clean_response.startswith("{") and "{" in clean_response:
+            start = clean_response.find("{")
+            end = clean_response.rfind("}")
+            if start != -1 and end != -1:
+                clean_response = clean_response[start:end+1]
 
         try:
-            result = json.loads(llm_response)
+            result = json.loads(clean_response)
         except json.JSONDecodeError as exc:
-            raise ValueError("LLM response is not valid JSON") from exc
+             # Log the raw response for debugging
+            print(f"FAILED JSON PARSING. Raw response:\n{llm_response}\nCleaned response:\n{clean_response}")
+            raise ValueError(f"LLM response is not valid JSON: {exc}") from exc
 
         log_experiment(
             agent_name="Auditor_Agent",
@@ -101,10 +127,10 @@ class AuditorAgent:
             action=ActionType.ANALYSIS,
             details={
                 "target_directory": str(target_dir),
-                "files_analyzed": len(python_files),
+                "files_analyzed": [str(p) for p in python_files],
                 "input_prompt": full_prompt[:1500] + "..." if len(full_prompt) > 1500 else full_prompt,
                 "output_response": llm_response[:1000] + "..." if len(llm_response) > 1000 else llm_response,
-                "analysis_result_keys": list(result.keys()) if isinstance(result, dict) else []
+                "issues_found": len(result.get("issues", [])) if isinstance(result, dict) else 0
             },
             status="SUCCESS",
         )

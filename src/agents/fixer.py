@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import json
 
-import google.generativeai as genai
+from mistralai import Mistral
 from dotenv import load_dotenv
 
 from src.tools.file_operations import read_file, write_file, backup_file
@@ -19,23 +19,22 @@ class FixerAgent:
     Agent responsable de la correction du code source
     """
     
-    def __init__(self, model_name: str = "gemini-2.5-flash"):
+    def __init__(self, model_name: str = "mistral-large-latest"):
         """
         Initialise l'agent Fixer
         """
         self.model_name = model_name
         
         load_dotenv()
-        api_key = os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("MISTRAL_API_KEY")
         
         if not api_key:
             raise ValueError(
-                "GOOGLE_API_KEY non trouvée dans .env! "
+                "MISTRAL_API_KEY non trouvée dans .env! "
                 "Créez un fichier .env avec votre clé API."
             )
         
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
+        self.client = Mistral(api_key=api_key)
         
         print(f"Fixer Agent initialisé avec le modèle: {model_name}")
 
@@ -57,17 +56,19 @@ class FixerAgent:
     
     def _clean_generated_code(self, code: str) -> str:
         """
-        Nettoie le code généré par le LLM (enlève les balises markdown)
+        Nettoie le code généré par le LLM (enlève les balises markdown et extrait le code)
         """
-        # Enlever les balises markdown si présentes
-        if code.strip().startswith("```python"):
-            code = code.strip()[len("```python"):].strip()
-        if code.strip().startswith("```"):
-            code = code.strip()[3:].strip()
-        if code.strip().endswith("```"):
-            code = code.strip()[:-3].strip()
-        
-        return code
+        # Si le modele renvoie des blocs de code markdown, on essaie de les extraire
+        if "```python" in code:
+            parts = code.split("```python")
+            if len(parts) > 1:
+                code = parts[1].split("```")[0]
+        elif "```" in code:
+            parts = code.split("```")
+            if len(parts) > 1:
+                code = parts[1]
+                
+        return code.strip()
     
     def fix_code(self, refactoring_plan: Dict, test_errors: Optional[str] = None) -> Dict:
         """
@@ -86,7 +87,7 @@ class FixerAgent:
             validate_path(file_path)
 
             original_code = read_file(file_path)
-            backup_file(file_path)
+            # backup_file(file_path)
 
             prompt = (
                 f"{prompt_template}\n\n"
@@ -96,13 +97,16 @@ class FixerAgent:
                 f"{original_code}\n\n"
             )
 
-            response = self.model.generate_content(prompt)
-            fixed_code = self._clean_generated_code(response.text)
+            response = self.client.chat.complete(
+                 model=self.model_name,
+                 messages=[{"role": "user", "content": prompt}]
+            )
+            fixed_code = self._clean_generated_code(response.choices[0].message.content)
 
             if fixed_code.strip() == original_code.strip():
                 continue  # Nothing changed
 
-            write_file(file_path, fixed_code)
+            write_file(file_path, fixed_code, create_backup=False)
 
             results.append(
                 {
@@ -117,7 +121,7 @@ class FixerAgent:
                 action=ActionType.DEBUG if test_errors else ActionType.FIX,
                 details={
                     "input_prompt": prompt,
-                    "output_response": response.text,
+                    "output_response": response.choices[0].message.content,
                     "file_fixed": str(file_path),
                 },
                 status="SUCCESS",

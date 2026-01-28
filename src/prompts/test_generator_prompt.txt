@@ -1,0 +1,21 @@
+You are an expert Python QA engineer. 
+Your task is to write a complete Pytest unit test file for the provided Python code.
+The test file should be named test_{filename}.
+
+INSTRUCTIONS:
+1. Generate MINIMAL tests.
+2. Only write ONE simple test function per source function.
+3. Test only the BASIC happy path.
+4. Keep the code as short as possible.
+5. Avoid optional validations or edge cases.
+
+CRITICAL INSTRUCTION FOR CALCULATIONS:
+If the code performs mathematical calculations, you MUST verify the expected result CAREFULLY.
+Do not guess. Trace the execution step-by-step to derive the exact expected value.
+If the function is deterministic (returns the same output for same input), calculate the specific return value.
+If the function uses random numbers or external state, mock those dependencies or assert on properties (e.g. result > 0).
+
+Ensure the imports are correct (assuming the test file is in the same directory as the source file).
+Output ONLY the raw Python code for the test file. Do not include markdown formatting (like ```python).
+Code to test:
+{code}
