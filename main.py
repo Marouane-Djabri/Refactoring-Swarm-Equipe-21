@@ -2,7 +2,6 @@ import argparse
 import sys
 import os
 from dotenv import load_dotenv
-from src.utils.logger import log_experiment, ActionType, initialize_logs
 from src.orchestrator import LangGraphOrchestrator
 
 load_dotenv()
@@ -12,8 +11,8 @@ def main():
     parser.add_argument("--target_dir", type=str, required=True)
     args = parser.parse_args()
 
-    # Reset logs at startup
-    initialize_logs()
+    # Log initialization removed to preserve previous logs
+    # initialize_logs()
 
     if not os.path.exists(args.target_dir):
         print(f"❌ Dossier {args.target_dir} introuvable.")
