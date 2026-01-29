@@ -16,6 +16,10 @@ If the function is deterministic (returns the same output for same input), calcu
 If the function uses random numbers or external state, mock those dependencies or assert on properties (e.g. result > 0).
 
 Ensure the imports are correct (assuming the test file is in the same directory as the source file).
+You MUST explicitly import the specific functions to be tested from the source file.
+Example: For a file 'logic_bug.py' containing functions 'foo' and 'bar', write:
+`from logic_bug import foo, bar`
+
 Output ONLY the raw Python code for the test file. Do not include markdown formatting (like ```python).
 Code to test:
 {code}

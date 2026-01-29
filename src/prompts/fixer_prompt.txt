@@ -12,6 +12,15 @@ YOUR TASK:
 - DO NOT return JSON. Return ONLY the full Python code of the fixed file.
 - If no changes are needed, return the original code exactly as is.
 
+CRITICAL CONSTRAINTS:
+- DO NOT add any new functions.
+- DO NOT change function names.
+- DO NOT change the signature of existing functions (argument names and order must remain the same).
+- DO NOT restructure the code (do not move functions, change class structures, or extract new functions unless absolutely necessary to fix a crash).
+- MAINTAIN the existing logical flow and structure.
+- Only fix what is broken or specifically requested in the issue. Do not perform arbitrary style refactoring if not asked.
+- FOCUS ON THE PROVIDED TEST FAILURES: If test errors are provided, your PRIMARY goal is to fix those specific errors.
+
 MANDATORY OUTPUT FORMAT:
 You must output the code inside a Python markdown block, like this:
 

@@ -97,6 +97,9 @@ class FixerAgent:
                 f"{original_code}\n\n"
             )
 
+            if test_errors:
+                prompt += f"TEST ERRORS (Fix these errors in the code):\n{test_errors}\n\n"
+
             response = self.client.chat.complete(
                  model=self.model_name,
                  messages=[{"role": "user", "content": prompt}]

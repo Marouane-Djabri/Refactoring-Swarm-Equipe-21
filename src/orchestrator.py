@@ -4,7 +4,7 @@ Test-generator -> Auditor -> Fixer -> Judge en boucle
 """
 
 from pathlib import Path
-from typing import Dict, List, TypedDict, Annotated
+from typing import Dict, List, TypedDict, Annotated, Optional
 import operator
 
 from langgraph.graph import StateGraph, END
@@ -35,10 +35,20 @@ class RefactoringState(TypedDict):
     refactoring_plan: Dict
     audit_completed: bool
 
+    # Indicateur pour TestGenerator
+    tests_generated: bool
+
     # Résultats du Fixer
     fix_results: Dict
     fix_completed: bool
     current_iteration: int
+    
+    # Feedback du Judge
+    tests_passed: bool
+    test_results: Dict
+    error_feedback: Optional[str]
+    should_continue: bool
+    max_iterations: int
 
     # Résultats du Judge
     test_results: Dict
@@ -88,7 +98,7 @@ class LangGraphOrchestrator:
         self.workflow = self._build_workflow_graph()
 
         print("\nGraphe LangGraph créé!")
-        print("Noeuds: Auditor -> Fixer -> TestGenerator -> Judge -> (Loop)")
+        print("Noeuds: Auditor -> TestGenerator -> Judge -> Fixer -> (Loop to Judge)")
         print()
 
     def _build_workflow_graph(self) -> StateGraph:
@@ -117,24 +127,24 @@ class LangGraphOrchestrator:
         # START -> Auditor (toujours commencer par l'analyse)
         workflow.set_entry_point("auditor")
 
-        # Auditor -> Fixer (après analyse, toujours corriger)
-        workflow.add_edge("auditor", "fixer")
-
-        # Fixer -> TestGenerator (nouveau flux)
-        workflow.add_edge("fixer", "test_generator")
+        # Auditor -> TestGenerator (plans -> tests)
+        workflow.add_edge("auditor", "test_generator")
         
-        # TestGenerator -> Judge
+        # TestGenerator -> Judge (tests -> validation initiale)
         workflow.add_edge("test_generator", "judge")
 
         # Judge -> ? (transition conditionnelle)
         workflow.add_conditional_edges(
             "judge",
-            self._should_continue_or_stop,  # Fonction de décision
+            self._should_continue_or_stop,  
             {
-                "continue": "fixer",  # Si tests échouent et < max_iter -> Fixer
-                "stop": END           # Si tests OK ou max_iter atteint -> Fin
+                "continue": "fixer",  # Si échec -> Fixer
+                "stop": END           # Si succès -> Fin
             }
         )
+
+        # Fixer -> Judge (correction -> re-validation)
+        workflow.add_edge("fixer", "judge")
 
         # Compiler le graphe
         app = workflow.compile()
@@ -175,19 +185,27 @@ class LangGraphOrchestrator:
 
         # Exécuter la correction
         fix_results = self.fixer.fix_code(
-            refactoring_plan, test_errors=state["error_feedback"])
+            refactoring_plan, test_errors=state.get("error_feedback"))
 
         # Mettre à jour l'état
         state["fix_results"] = fix_results
         state["fix_completed"] = True
-        state["current_iteration"] += 1
+        # Note: current_iteration est incrémenté dans _should_continue_or_stop
 
         return state
 
     def _test_generator_node(self, state: RefactoringState) -> RefactoringState:
         """
-        Noeud TestGenerator: Génère des tests unitaires pour le code corrigé
+        Noeud TestGenerator: Génère des tests unitaires pour le code (une seule fois)
         """
+        
+        # Si les tests ont déjà été générés, on passe (le graphe ne devrait pas repasser par ici, mais sécurité)
+        if state.get("tests_generated"):
+            print("\n" + "=" * 30)
+            print("NOEUD: TEST GENERATOR (Skipped - Already Generated)")
+            print("=" * 30)
+            return state
+
         print("\n" + "=" * 30)
         print("NOEUD: TEST GENERATOR (Test Creation)")
         print("=" * 30)
@@ -195,6 +213,7 @@ class LangGraphOrchestrator:
         target_dir = state["target_dir"]
         self.test_generator.generate_unit_tests(target_dir)
         
+        state["tests_generated"] = True
         return state
         
     def _judge_node(self, state: RefactoringState) -> RefactoringState:
@@ -216,8 +235,25 @@ class LangGraphOrchestrator:
 
         # Si tests échouent, préparer le feedback pour le prochain cycle
         if not state["tests_passed"]:
-            state["error_feedback"] = "\n".join(
-                [t.get("error", "") for t in test_results.get("failing_tests", [])])
+            # Recupérer uniquement les tests echoués
+            failing_tests = test_results.get("failing_tests", [])
+            
+            # Formater le feedback avec SEULEMENT les tests echoués
+            feedback_messages = []
+            if failing_tests:
+                feedback_messages.append("TEST FAILURES (Fix these SPECIFIC errors):")
+                for failure in failing_tests:
+                    feedback_messages.append(f"""
+- File: {failure.get('file', 'unknown')}
+- Test: {failure.get('test', 'unknown')}
+- Error: {failure.get('error', 'No error message')}
+""")
+            
+            # Si on a des erreurs Pylint (stockées dans failing_tests pour le moment par JudgeAgent)
+            # Elles seront incluses car _extract_failures les gère ou Judge les y met
+            
+            state["error_feedback"] = "\n".join(feedback_messages)
+            
             # Injecter les erreurs dans le plan pour le Fixer
             state["refactoring_plan"]["errors"] = state["error_feedback"]
 
@@ -306,9 +342,8 @@ class LangGraphOrchestrator:
         # Découvrir les fichiers Python
         python_files = self.discover_python_files(target_path)
 
-        # Si aucun fichier n'est trouvé, on continue quand même car le TestCaseGenerator va en créer
         if not python_files:
-            print("No Python files found initially. TestCaseGenerator will generate them.")
+            print("No Python files found initially.")
 
         # ===== INITIALISER L'ÉTAT =====
         initial_state: RefactoringState = {
@@ -317,12 +352,13 @@ class LangGraphOrchestrator:
             "tools": self.tools,
             "refactoring_plan": {},
             "audit_completed": False,
+            "tests_generated": False,
             "fix_results": {},
             "fix_completed": False,
             "current_iteration": 1,
             "test_results": {},
             "tests_passed": False,
-            "error_feedback": "",
+            "error_feedback": None,
             "max_iterations": self.max_iterations,
             "should_continue": True,
             "final_result": {}

@@ -7,6 +7,16 @@ from enum import Enum
 # Chemin du fichier de logs
 LOG_FILE = os.path.join("logs", "experiment_data.json")
 
+def initialize_logs():
+    """
+    Réinitialise le fichier de logs au démarrage.
+    Supprime l'ancien contenu et crée une liste vide.
+    """
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    with open(LOG_FILE, 'w', encoding='utf-8') as f:
+        json.dump([], f, indent=4)
+    print(f"🧹 Logs reset: {LOG_FILE}")
+
 class ActionType(str, Enum):
     """
     Énumération des types d'actions possibles pour standardiser l'analyse.
