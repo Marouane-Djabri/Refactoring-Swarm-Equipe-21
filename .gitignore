@@ -14,6 +14,7 @@ venv/
 logs/*
 # ...SAUF le fichier de données final qu'on veut récupérer
 !logs/experiment_data.json
+!logs/MISA_experiment_data.json
 
 Document 1 - Statement of the IGL Lab (2025-2026) - English version.pdf
 Document 2 - Technical Configuration Guide -English version.pdf
